@@ -1,0 +1,155 @@
+#!/usr/bin/python
+
+# author Gabriel G. de Brito gabrielgbrito@icloud.com
+# version 1.1.0
+# since Jul 23, 2022
+
+#
+# Copyright (c) 2022 Gabriel G. de Brito
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy of 
+# this software and associated documentation files (the “Software”), to deal 
+# in the Software without restriction, including without limitation the rights to 
+# use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
+# of the Software, and to permit persons to whom the Software is furnished to do 
+# so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in all 
+# copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+# SOFTWARE.
+# 
+
+# 
+# Simple battery monitor for Linux, depends on psutil and libnotify
+# (Arch Linux packages: python-psutil and libnotify)
+#
+
+import psutil as ps
+import configparser as c
+import os
+import subprocess
+import sys
+from shlex import split
+from time import sleep
+
+
+# if --help or path to config file
+config_file = f"{os.getenv('HOME')}/.config/batterymon/config.ini"
+try:
+    if sys.argv[1] == "--help":
+        subprocess.run(["man", "batterymon"])
+        exit(0)
+    else:
+        config_file = sys.argv[1]
+
+except IndexError:
+    pass
+
+
+# wrap on subprocess.Popen so it do not get index out of bounds
+def run(cmd):
+    if len(cmd) > 0:
+        subprocess.Popen(cmd)
+
+
+# get configuration
+config = c.ConfigParser()
+
+defaults = {
+    "Commands":  {
+        "OnLow":      "notify-send 'Low battery level' 'Battery level is below 20%%. Please connect the computer to the charger.'",
+        "OnCritical": "notify-send --urgency=critical 'Critical battery level' 'Battery level is below 10%%. Please connect the computer to the charger immediately.'",
+        "OnPlug":     "notify-send 'Charger connected'",
+        "OnUnplug":   "notify-send 'Charger disconnected'",
+        "OnFull":     "notify-send 'Battery is full.' 'You can disconnected the charger now.'",
+    },
+    "General": {
+        "TimeToIdle": "10",
+        "LowValue": "20",
+        "CriticalValue": "10",
+        "WaitOnStartup": "10",
+    }
+}
+
+config.read_dict(defaults)
+config.read(config_file)
+
+ON_PLUG         = split(config["Commands"]["OnPlug"])
+ON_UNPLUG       = split(config["Commands"]["OnUnplug"])
+ON_FULL         = split(config["Commands"]["OnFull"])
+ON_CRITICAL     = split(config["Commands"]["OnCritical"])
+ON_LOW          = split(config["Commands"]["OnLow"])
+CRITICAL_VALUE  = int(config["General"]["CriticalValue"])
+LOW_VALUE       = int(config["General"]["LowValue"])
+TIME_TO_IDLE    = int(config["General"]["TimeToIdle"])
+WAIT_ON_STARTUP = int(config["General"]["WaitOnStartup"])
+
+del config_file, defaults, config
+
+# startup
+notified = False
+alerted  = False
+plugged  = False
+not_full = False
+
+# class TestBat:
+#     percent = 15
+#     power_plugged = False
+
+sleep(WAIT_ON_STARTUP)
+
+# main loop
+while True:
+
+    bat = ps.sensors_battery()
+    # bat = TestBat()
+
+    if bat == None:
+        import sys
+        run(["notify-send", "--urgency=critical", "batterymon: cannot get battery info", "Monitor is exiting because it cannot get system battery info."])
+        print("batterymon is exiting because it cannot get system battery info.", file=sys.stderr)
+        exit(1)
+
+    # the if tree is based whenever the charger is plugged or not
+    if bat.power_plugged:
+        # on plug
+        if not plugged:
+            plugged  = True
+            notified = False
+            alerted  = False
+            run(ON_PLUG)
+
+        # on full
+        if bat.percent == 100 and not not_full:
+            not_full = True
+            run(ON_FULL)
+    
+    else:
+        # on unplug
+        if plugged:
+            plugged = False
+            run(ON_UNPLUG)
+
+        # on full but disconnected
+        if not_full:
+            not_full = False
+
+        # on critical
+        if bat.percent <= CRITICAL_VALUE and not alerted:
+            alerted = True
+            run(ON_CRITICAL)
+
+        # on low
+        elif bat.percent <= LOW_VALUE and not notified:
+            notified = True
+            run(ON_LOW)
+
+    sleep(TIME_TO_IDLE)
+

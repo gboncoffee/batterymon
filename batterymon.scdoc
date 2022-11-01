@@ -1,0 +1,24 @@
+batterymon(1)
+
+# NAME
+Batterymon - Simple battery monitor
+
+# SYNOPSIS
+*batterymon* _[/path/to/config/file]_ _[--help]_
+
+# DESCRIPTION
+*batterymon* is a tool to run commands on some system's battery events.
+
+# USAGE
+_--help_ shows this help.
+
+_/path/to/config/file_
+	specifies a config file (don't need to pass the arg if the config is at
+	$HOME/.config/batterymon/config.ini).
+
+# CONFIGURATION
+Copy the default config file at _/etc/batterymon/config.ini_ to
+_$HOME/.config/batterymon/config.ini_ and modify following the instructions on
+the comments.
+
+; vim:filetype=scdoc
